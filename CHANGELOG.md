@@ -8,6 +8,10 @@ as its GitHub Release notes.
 
 ## [Unreleased]
 
+### Changed
+- The macOS download is signed and notarized: no Gatekeeper warning, no `xattr` workaround. Crancula is also
+  packaged for the Mac App Store.
+
 ## [0.3.0] - 2026-10-28
 
 ### Added

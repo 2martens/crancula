@@ -35,3 +35,4 @@ with a new one and update both statuses here.
 | 27 | [Own MusicXML reader in the domain, `.mxl` unzipped with fflate](0027-own-musicxml-reader-in-the-domain.md) | Accepted |
 | 28 | [Tape pieces saved into one folder by the main process; Plotters in a snapshot of their own](0028-tape-pieces-saved-into-one-folder-by-main.md) | Accepted |
 | 29 | [Own MusicXML writer in the domain, saved by the main process](0029-own-musicxml-writer-in-the-domain.md) | Accepted |
+| 30 | [macOS builds signed and notarized; a sandboxed package for the Mac App Store](0030-macos-builds-signed-and-in-the-app-store.md) | Accepted |

@@ -162,9 +162,8 @@ Get the [latest release](https://github.com/LilSticky/crancula/releases/latest):
 | macOS (Apple silicon) | `.dmg` |
 | Linux | `.AppImage` |
 
-The builds are not code-signed. On Windows, SmartScreen asks for confirmation: choose
-*More info → Run anyway*. On macOS, if Gatekeeper reports the app as damaged, run
-`xattr -cr /Applications/crancula.app`.
+The macOS build is signed and notarized. The Windows and Linux builds are not code-signed; on
+Windows, SmartScreen asks for confirmation: choose *More info → Run anyway*.
 
 ### Run it from source
 
