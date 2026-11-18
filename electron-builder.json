@@ -1,7 +1,9 @@
 {
+  "appId": "de.twomartens.crancula",
   "asar": true,
   "directories": {
-    "output": "release/"
+    "output": "release/",
+    "buildResources": "build"
   },
   "files": [
     "**/*",
@@ -25,9 +27,20 @@
   },
   "mac": {
     "icon": "dist/browser/assets/icons",
+    "category": "public.app-category.music",
     "target": [
       "dmg"
-    ]
+    ],
+    "hardenedRuntime": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "notarize": true
+  },
+  "mas": {
+    "hardenedRuntime": false,
+    "entitlements": "build/entitlements.mas.plist",
+    "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+    "provisioningProfile": "build/embedded.provisionprofile"
   },
   "linux": {
     "icon": "dist/browser/assets/icons",

@@ -25,6 +25,10 @@ Cutting Problems count in the Tape list, Lane rows in measure columns, the Tape 
 **v0.3.0 released** (2026-10-28): Presets, Record, Scores in and out, Plotters and Tape pieces, side by side and the
 Guide margin. The hand checks below are still open.
 
+**macOS signing** (branch `chore/macos-code-signing`, [ADR 30](adr/0030-macos-builds-signed-and-in-the-app-store.md)): the `.dmg` is
+signed and notarized, a Mac App Store `.pkg` is built. Waiting for the owner's one-time Apple setup and the GitHub
+secrets ([MACOS-SIGNING.md](MACOS-SIGNING.md)); until then a tag release fails on macOS.
+
 **Next step:** none planned; take the highest-priority open issue, or do the hand checks below.
 
 ## Not checked by hand yet

@@ -1,7 +1,9 @@
 # Packages Crancula for Windows, macOS and Linux and publishes a draft GitHub Release (#11).
 # A pushed tag `v*` builds and publishes. A manual run, or a pull request that changes the packaging
 # setup, only builds and keeps the artifacts.
-# The builds are not code-signed: Windows SmartScreen and macOS Gatekeeper will warn.
+# macOS is signed with Developer ID and notarized, and a Mac App Store package is built (ADR 30,
+# documentation/MACOS-SIGNING.md). Without the signing secrets, a pull request or manual run builds
+# unsigned and skips the App Store package; a tag fails. Windows and Linux are not code-signed.
 name: Release
 
 on:
@@ -11,6 +13,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - electron-builder.json
+      - build/**
   workflow_dispatch:
 
 permissions:
@@ -50,10 +53,38 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Package
+        if: runner.os != 'macOS'
         run: npm run electron:build
         env:
-          # Unsigned builds: don't look for a signing identity on macOS.
+          # Unsigned builds: don't look for a signing identity.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Package, signed and notarized
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          # Developer ID Application certificate with its private key (.p12, base64).
+          CSC_LINK: ${{ secrets.MAC_DEVELOPER_ID_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_P12_PASSWORD }}
+          # App Store Connect API key for notarization.
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          if [ -z "$CSC_LINK" ] || [ -z "$APPLE_API_KEY_P8" ]; then
+            if [ "$IS_TAG" = 'true' ]; then
+              echo "::error::A release needs the macOS signing secrets (documentation/MACOS-SIGNING.md)."
+              exit 1
+            fi
+            echo "::warning::macOS signing secrets missing: building an unsigned .dmg."
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY_ID APPLE_API_ISSUER
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          else
+            export APPLE_API_KEY="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY_ID.p8"
+            printf '%s' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
+          fi
+          unset APPLE_API_KEY_P8
+          npm run electron:build
       # Targets from electron-builder.json: portable .exe, .dmg, .AppImage.
       - uses: actions/upload-artifact@v7
         with:
@@ -64,9 +95,65 @@ jobs:
             release/*.AppImage
           if-no-files-found: error
 
+  app-store:
+    name: Package (Mac App Store)
+    needs: check
+    runs-on: macos-latest
+    env:
+      IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      # Apple Distribution certificate (signs the app) and Mac Installer Distribution certificate
+      # (signs the .pkg), each a .p12 with its private key, base64.
+      CSC_LINK: ${{ secrets.MAS_APP_P12_BASE64 }}
+      CSC_KEY_PASSWORD: ${{ secrets.MAS_APP_P12_PASSWORD }}
+      CSC_INSTALLER_LINK: ${{ secrets.MAS_INSTALLER_P12_BASE64 }}
+      CSC_INSTALLER_KEY_PASSWORD: ${{ secrets.MAS_INSTALLER_P12_PASSWORD }}
+      MAS_PROVISIONING_PROFILE_BASE64: ${{ secrets.MAS_PROVISIONING_PROFILE_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Check the App Store secrets
+        id: secrets
+        shell: bash
+        run: |
+          if [ -n "$CSC_LINK" ] && [ -n "$CSC_INSTALLER_LINK" ] && [ -n "$MAS_PROVISIONING_PROFILE_BASE64" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          elif [ "$IS_TAG" = 'true' ]; then
+            echo "::error::A release needs the Mac App Store secrets (documentation/MACOS-SIGNING.md)."
+            exit 1
+          else
+            echo "::warning::Mac App Store secrets missing: skipping the App Store package."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        if: steps.secrets.outputs.present == 'true'
+      - uses: actions/setup-node@v7
+        if: steps.secrets.outputs.present == 'true'
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+        if: steps.secrets.outputs.present == 'true'
+      - name: Package
+        if: steps.secrets.outputs.present == 'true'
+        shell: bash
+        run: |
+          case "$APPLE_TEAM_ID" in
+            *[!A-Z0-9]*|'') echo "::error::APPLE_TEAM_ID must be the 10-character Team ID."; exit 1 ;;
+          esac
+          printf '%s' "$MAS_PROVISIONING_PROFILE_BASE64" | base64 --decode > build/embedded.provisionprofile
+          sed -i '' "s/TEAM_ID\./$APPLE_TEAM_ID./" build/entitlements.mas.plist
+          npm run web:prod
+          npx electron-builder build --mac mas --publish=never "-c.mas.extendInfo.ElectronTeamID=$APPLE_TEAM_ID"
+      # Not attached to the GitHub Release: upload it to App Store Connect with Transporter.
+      - uses: actions/upload-artifact@v7
+        if: steps.secrets.outputs.present == 'true'
+        with:
+          name: app-store-package
+          path: release/**/*.pkg
+          if-no-files-found: error
+
   publish:
     name: Publish draft release
-    needs: build
+    needs: [build, app-store]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -76,6 +163,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
+          pattern: crancula-*
           merge-multiple: true
       # Release notes: the version's section of CHANGELOG.md (release skill), plus the install note.
       - name: Write release notes
@@ -97,8 +185,8 @@ jobs:
 
           ### Install
           Windows: portable `.exe`. macOS: `.dmg` (Apple silicon). Linux: `.AppImage`.
-          The builds are not code-signed: Windows SmartScreen asks for confirmation (*More info → Run anyway*);
-          on macOS, run `xattr -cr /Applications/crancula.app` if Gatekeeper reports the app as damaged.
+          The macOS build is signed and notarized. The Windows and Linux builds are not code-signed:
+          Windows SmartScreen asks for confirmation (*More info → Run anyway*).
           NOTE
       - name: Create draft release
         env:
